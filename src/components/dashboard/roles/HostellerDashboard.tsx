@@ -13,8 +13,10 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  ArrowRight,
+  Search,
+  BedDouble,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 interface HostellerDashboardProps {
   user: User;
@@ -23,8 +25,12 @@ interface HostellerDashboardProps {
 const quickActions = [
   { label: 'Sports Booking', icon: Dumbbell, href: '/dashboard/sports', color: 'bg-green-500' },
   { label: 'Laundry', icon: WashingMachine, href: '/dashboard/laundry', color: 'bg-blue-500' },
-  { label: 'Complaint', icon: MessageSquareWarning, href: '/dashboard/complaints', color: 'bg-red-500' },
+  { label: 'Complaint', icon: MessageSquareWarning, href: '/dashboard/complaints', color: 'bg-amber-500' },
   { label: 'Gate Pass', icon: DoorOpen, href: '/dashboard/gate-pass', color: 'bg-purple-500' },
+  { label: 'Attendance', icon: Moon, href: '/dashboard/attendance', color: 'bg-indigo-500' },
+  { label: 'Room Info', icon: BedDouble, href: '/dashboard/room', color: 'bg-teal-500' },
+  { label: 'Lost & Found', icon: Search, href: '/dashboard/lost-found', color: 'bg-orange-500' },
+  { label: 'Emergency', icon: AlertTriangle, href: '/dashboard/emergency', color: 'bg-red-500' },
 ];
 
 const recentActivity = [
@@ -47,10 +53,12 @@ export function HostellerDashboard({ user }: HostellerDashboardProps) {
             Room {user.roomNumber} • Hostel ID: {user.hostelId}
           </p>
         </div>
-        <Button variant="destructive" className="gap-2">
-          <AlertTriangle className="w-4 h-4" />
-          Emergency
-        </Button>
+        <Link to="/dashboard/emergency">
+          <Button variant="destructive" className="gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            Emergency
+          </Button>
+        </Link>
       </div>
 
       {/* Hostel ID Card */}
@@ -94,14 +102,16 @@ export function HostellerDashboard({ user }: HostellerDashboardProps) {
       {/* Quick Actions */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {quickActions.map((action) => (
-          <Card key={action.label} className="card-hover cursor-pointer">
-            <CardContent className="pt-6 text-center">
-              <div className={`inline-flex p-3 rounded-xl ${action.color} mb-3`}>
-                <action.icon className="w-6 h-6 text-white" />
-              </div>
-              <p className="font-medium text-sm">{action.label}</p>
-            </CardContent>
-          </Card>
+          <Link key={action.label} to={action.href}>
+            <Card className="card-hover cursor-pointer h-full">
+              <CardContent className="pt-6 text-center">
+                <div className={`inline-flex p-3 rounded-xl ${action.color} mb-3`}>
+                  <action.icon className="w-6 h-6 text-white" />
+                </div>
+                <p className="font-medium text-sm">{action.label}</p>
+              </CardContent>
+            </Card>
+          </Link>
         ))}
       </div>
 
@@ -177,9 +187,11 @@ export function HostellerDashboard({ user }: HostellerDashboardProps) {
                 <p className="text-xs text-muted-foreground">Leave</p>
               </div>
             </div>
-            <Button variant="outline" className="w-full">
-              Mark Tonight's Attendance
-            </Button>
+            <Link to="/dashboard/attendance">
+              <Button variant="outline" className="w-full">
+                Mark Tonight's Attendance
+              </Button>
+            </Link>
           </CardContent>
         </Card>
       </div>
