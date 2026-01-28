@@ -1,16 +1,22 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { Session, User as SupabaseUser } from '@supabase/supabase-js';
 import { User, UserRole } from '@/types';
 
 interface AuthContextType {
   user: User | null;
+  session: Session | null;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  isLoading: boolean;
+  login: (email: string, password: string) => Promise<{ error: Error | null }>;
+  signup: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
+  logout: () => Promise<void>;
   setDemoUser: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Demo users for testing without auth
 const demoUsers: Record<UserRole, User> = {
   day_scholar: {
     id: 'ds-001',
@@ -78,31 +84,148 @@ const demoUsers: Record<UserRole, User> = {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const login = async (email: string, password: string) => {
-    // Demo login - in production, this would call an API
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    
-    // For demo, detect role from email domain
-    if (email.includes('warden')) {
-      setUser(demoUsers.warden);
-    } else if (email.includes('admin')) {
-      setUser(demoUsers.college_admin);
-    } else if (email.includes('super')) {
-      setUser(demoUsers.super_admin);
-    } else if (email.includes('visitor')) {
-      setUser(demoUsers.visitor);
-    } else if (email.includes('day') || email.includes('scholar')) {
-      setUser(demoUsers.day_scholar);
-    } else {
-      setUser(demoUsers.hosteller);
+  useEffect(() => {
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        
+        if (session?.user) {
+          // Defer profile fetch to avoid deadlock
+          setTimeout(() => {
+            fetchUserProfile(session.user.id);
+          }, 0);
+        } else {
+          setUser(null);
+        }
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session?.user) {
+        fetchUserProfile(session.user.id);
+      }
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchUserProfile = async (userId: string) => {
+    try {
+      // Fetch profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      // Fetch role
+      const { data: roleData } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', userId)
+        .maybeSingle();
+
+      if (profile) {
+        const userRole = (roleData?.role as UserRole) || 'hosteller';
+        
+        setUser({
+          id: userId,
+          email: profile.email,
+          name: profile.name,
+          role: userRole,
+          collegeId: profile.college_id || undefined,
+          hostelId: profile.hostel_id || undefined,
+          roomNumber: profile.room_number || undefined,
+          course: profile.course || undefined,
+          branch: profile.branch || undefined,
+          year: profile.year || undefined,
+          block: profile.block || undefined,
+          status: (profile.status as 'active' | 'inactive') || 'active',
+          phone: profile.phone || undefined,
+          avatar: profile.avatar_url || undefined,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching user profile:', error);
     }
   };
 
-  const logout = () => {
-    setUser(null);
+  const login = async (email: string, password: string) => {
+    try {
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      return { error: error as Error | null };
+    } catch (error) {
+      return { error: error as Error };
+    }
   };
 
+  const signup = async (email: string, password: string, name: string) => {
+    try {
+      const redirectUrl = `${window.location.origin}/`;
+      
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl,
+          data: {
+            name,
+          },
+        },
+      });
+
+      if (error) return { error };
+
+      // Create profile for the new user
+      if (data.user) {
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            user_id: data.user.id,
+            email,
+            name,
+          });
+
+        if (profileError) {
+          console.error('Error creating profile:', profileError);
+        }
+
+        // Assign default role (hosteller for demo)
+        const { error: roleError } = await supabase
+          .from('user_roles')
+          .insert({
+            user_id: data.user.id,
+            role: 'hosteller',
+          });
+
+        if (roleError) {
+          console.error('Error assigning role:', roleError);
+        }
+      }
+
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setSession(null);
+  };
+
+  // Demo mode - for testing without real auth
   const setDemoUser = (role: UserRole) => {
     setUser(demoUsers[role]);
   };
@@ -111,8 +234,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider
       value={{
         user,
+        session,
         isAuthenticated: !!user,
+        isLoading,
         login,
+        signup,
         logout,
         setDemoUser,
       }}
